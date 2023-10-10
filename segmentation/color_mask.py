@@ -1,9 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-import cv2
-import matplotlib.pyplot as plt
-import numpy as np
 from PIL import Image
 import mediapy as media
 import os
@@ -11,12 +8,24 @@ import glob
 from pathlib import Path
 from tqdm import tqdm
 
-data_dir = "/home/casimir/ETH/SemesterProject/IGS/dataset_easy/pairs_processed"
-save_dir = "/home/casimir/ETH/SemesterProject/IGS/dataset_easy/pairs_processed"
+def color_segment(img):
+    low = np.array([100, 0, 0])
+    high = np.array([255, 70, 70])
 
-rgb_dirs = glob.glob(os.path.join(data_dir, 'rgb/*'))
+    mask = cv2.inRange(img, low, high)
 
-mask_save_dir = os.path.join(save_dir, "mask")
+    return mask
+
+
+#Go up one dir and and change to that dir
+os.chdir(os.path.dirname(os.getcwd()))
+
+data_dir = "dataset/pairs_processed"
+save_dir = "dataset/pairs_processed"
+
+rgb_dirs = sorted(glob.glob(os.path.join(data_dir, 'rgb/*')))
+
+mask_save_dir = os.path.join(save_dir, "mask_color")
 
 os.makedirs(save_dir, exist_ok=True)
 os.makedirs(mask_save_dir, exist_ok=True)
@@ -26,14 +35,11 @@ for image_dir in tqdm(rgb_dirs):
     sample_image = cv2.imread(image_dir)
     img = cv2.cvtColor(sample_image,cv2.COLOR_BGR2RGB)
 
-    low = np.array([100, 0, 0])
-    high = np.array([255, 70, 70])
+    mask = color_segment(img)
 
-    mask = cv2.inRange(img, low, high)
+    # fg = cv2.bitwise_and(img, img, mask=mask)
 
-    # result = cv2.bitwise_and(img, img, mask=mask)
-
-    # save_img = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+    # save_img = cv2.cvtColor(fg, cv2.COLOR_RGB2BGR)
 
     cv2.imwrite(os.path.join(mask_save_dir, image_dir.split('/')[-1].replace("rgb", "mask")), mask)
 
