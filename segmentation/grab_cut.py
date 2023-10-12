@@ -28,25 +28,49 @@ for image_dir, mask_dir in tqdm(zip(rgb_dirs, input_mask_dirs)):
     img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
 
     input_mask = cv2.imread(mask_dir, cv2.IMREAD_GRAYSCALE)
-    input_mask[input_mask == 255] = 1
+    input_mask[input_mask > 0] = 1
+    input_mask[input_mask == 0] = 0
 
     # plt.imshow(mask)
     # plt.show()
 
-    kernel = np.ones((5, 5), np.uint8) 
-    mask = cv2.erode(input_mask, kernel, iterations=1) 
+    # kernel = np.ones((5, 5), np.uint8) 
+    kernel = np.ones((3, 3), np.uint8) 
+    erroded_mask = cv2.erode(input_mask, kernel, iterations=2) 
+    dilated_mask = cv2.dilate(input_mask, kernel, iterations=2)
+
+    mask = np.zeros(img.shape[:2],np.uint8)
+
+    mask += np.where((dilated_mask - input_mask) > 0, cv2.GC_PR_BGD, 0).astype('uint8')
+    mask += np.where((input_mask - erroded_mask) > 0, cv2.GC_PR_FGD, 0).astype('uint8')
+    mask += np.where(erroded_mask > 0, cv2.GC_FGD, 0).astype('uint8')
+
+
+
+
+
 
     # plt.imshow(mask_erosion)
     # plt.show()
 
     # mask = np.zeros(img.shape[:2],np.uint8)
+    # mask[200:250,200:250] = 1
+
+    # plt.imshow(mask)
+    # plt.show()
 
     bgdModel = np.zeros((1,65),np.float64)
     fgdModel = np.zeros((1,65),np.float64)
 
     rect = (0,0,mask.shape[0],mask.shape[1])
 
-    cv2.grabCut(img,mask,rect,bgdModel,fgdModel,5,cv2.GC_INIT_WITH_MASK)
+    # cv2.grabCut(img,mask,rect,bgdModel,fgdModel,5,cv2.GC_INIT_WITH_RECT)
+    cv2.grabCut(img,mask,None,bgdModel,fgdModel,10,cv2.GC_INIT_WITH_MASK)
+
+    # plt.imshow(mask)
+    # plt.show()
+
+
 
     mask2 = np.where((mask==cv2.GC_FGD) | (mask==cv2.GC_PR_FGD), 1, 0).astype('uint8')
 
@@ -60,16 +84,21 @@ for image_dir, mask_dir in tqdm(zip(rgb_dirs, input_mask_dirs)):
 
     fg = cv2.bitwise_and(img, img, mask=mask2)
     bg = cv2.bitwise_and(img, img, mask=np.where(mask2==0, 1, 0).astype('uint8'))
+    # plt.imshow(fg)
+    # plt.show()
     # plt.imshow(bg)
     # plt.show()
-    cv2.imwrite("bg_grabcut.png", cv2.cvtColor(bg, cv2.COLOR_RGB2BGR))
+    # cv2.imwrite("bg_grabcut.png", cv2.cvtColor(bg, cv2.COLOR_RGB2BGR))
 
+    fg = cv2.bitwise_and(img, img, mask=input_mask)
     bg = cv2.bitwise_and(img, img, mask=np.where(input_mask==0, 1, 0).astype('uint8'))
+    # plt.imshow(fg)
+    # plt.show()
     # plt.imshow(bg)
     # plt.show()
-    cv2.imwrite("bg_color_mask.png", cv2.cvtColor(bg, cv2.COLOR_RGB2BGR))
+    # cv2.imwrite("bg_color_mask.png", cv2.cvtColor(bg, cv2.COLOR_RGB2BGR))
 
-    break
+    # break
 
 
 
