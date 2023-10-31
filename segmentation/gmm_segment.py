@@ -14,7 +14,7 @@ sys.path.append(import_dir)
 from evaluation_metrics import calc_IoU_Sets
 
 
-def generate_labeled_data(rgb_path, mask_path):
+def generate_dataset(rgb_path, mask_path, using_gt_mask=False):
 
     img = cv2.imread(rgb_path)
     assert img is not None, "file could not be read, check with os.path.exists()"
@@ -27,12 +27,17 @@ def generate_labeled_data(rgb_path, mask_path):
 
 
     fg = img[input_mask > 0]
-    bg = img[input_mask == 0]
+    rest = img[input_mask == 0]
 
-    X = np.concatenate((fg, bg), axis=0)
-    y = np.concatenate((np.ones(fg.shape[0]), np.zeros(bg.shape[0])), axis=0)
+    X = np.concatenate((fg, rest), axis=0)
+
+    if using_gt_mask:
+        y = np.concatenate((np.ones(fg.shape[0]), np.zeros(rest.shape[0])), axis=0)
+    else:
+        y = np.concatenate((np.ones(fg.shape[0]), -np.ones(rest.shape[0])), axis=0)
 
     return X, y
+
 
 def load_data(rgb_path):
 
@@ -45,8 +50,8 @@ def load_data(rgb_path):
 
     return X
 
-def train_gm(X, y):
-
+def train_gm_labeled(X, y):
+    
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
 
     n_classes = len(np.unique(y_train))
@@ -64,41 +69,104 @@ def train_gm(X, y):
     test_accuracy = np.mean(y_test_pred.ravel() == y_test.ravel())
 
     print("Train Acc:", train_accuracy, "Test Acc:", test_accuracy)
-
+    
     return gm
 
+def train_gm_partial_labeled(X, y, n_classes):
 
-rgb_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/rgb"
-mask_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/mask_color"
+    gm = GaussianMixture(n_components=n_classes, covariance_type="spherical", max_iter=20, random_state=0)
 
-rgb_dirs = [os.path.join(rgb_path, file) for file in sorted(os.listdir(rgb_path))]
-mask_dirs = [os.path.join(mask_path, file) for file in sorted(os.listdir(mask_path))]
+    fg_mean = X[y == 1].mean(axis=0)
+    bg_mean = X[y == -1].mean(axis=0)
 
-idx = 0
-image_path = rgb_dirs[idx]
-mask_path = mask_dirs[idx]
+    means = np.array((bg_mean, fg_mean)) #Bg is class 0, Fg is class 1
 
-X, y = generate_labeled_data(image_path, mask_path)
+    gm.means_init = means
 
-gm = train_gm(X, y)
+    gm.fit(X)
+            
+    return gm
 
-IoU_list = []
+def evaluate(model, rgb_dirs, gt_dirs, save_predictions=True, save_path=None):
 
-for image_path, mask_path in zip(rgb_dirs, mask_dirs):
+    IoU_list = []
 
-    X = load_data(image_path)
+    for idx, (image_path, gt_path) in enumerate(zip(rgb_dirs, gt_dirs)):
 
-    y_pred = gm.predict(X)
+        X = load_data(image_path)
 
-    img = cv2.imread(image_path)
-    mask_pred = y_pred.reshape((img.shape[0], img.shape[1], 1)).squeeze()
+        y_pred = model.predict(X)
 
-    input_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    input_mask[input_mask > 0] = 1
-    input_mask[input_mask == 0] = 0
+        img = cv2.imread(image_path)
+        mask_pred = y_pred.reshape((img.shape[0], img.shape[1], 1)).squeeze()
 
-    IoU = calc_IoU_Sets(truth=input_mask, pred=mask_pred)
-    IoU_list.append(IoU)
+        if save_predictions:
+            plt.imshow(img)
+            plt.imshow(mask_pred, alpha=0.6)
+            plt.savefig(f"{save_path}/mask_{idx}.png")
+
+        gt_mask = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
+        gt_mask[gt_mask > 0] = 1
+        gt_mask[gt_mask == 0] = 0
+
+        IoU = calc_IoU_Sets(truth=gt_mask, pred=mask_pred)
+        IoU_list.append(IoU)
+        
+
+    avg_Iou = sum(IoU_list)/len(IoU_list)
+
+    print("IoU on all", avg_Iou)
+
+    return avg_Iou
+
+def pipeline_labeled_fg_bg():
+
+    rgb_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/rgb"
+    mask_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/mask_color"
+
+    rgb_dirs = [os.path.join(rgb_path, file) for file in sorted(os.listdir(rgb_path))]
+    mask_dirs = [os.path.join(mask_path, file) for file in sorted(os.listdir(mask_path))]
+
+    idx = 0
+    image_path = rgb_dirs[idx]
+    mask_path = mask_dirs[idx]
+
+    X, y = generate_dataset(image_path, mask_path, using_gt_mask=True)
+
+    gm = train_gm_labeled(X, y)
 
 
-print("IoU on all", sum(IoU_list)/len(IoU_list))
+    evaluate(gm, rgb_dirs, save_predictions=True)
+
+
+def pipeline_labeled_fg():
+    
+    rgb_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/rgb"
+    mask_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/estimated_masks"
+    gt_mask_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/mask_color"
+    save_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/stop_motion_1/gm_mask_debug"
+    
+    os.makedirs(save_path, exist_ok=True)
+
+    rgb_dirs = [os.path.join(rgb_path, file) for file in sorted(os.listdir(rgb_path))]
+    mask_dirs = [os.path.join(mask_path, file) for file in sorted(os.listdir(mask_path))]
+    gt_dirs = [os.path.join(gt_mask_path, file) for file in sorted(os.listdir(gt_mask_path))]
+
+    idx = 1
+    image_path = rgb_dirs[idx]
+    mask_path = mask_dirs[idx]
+
+    X, y = generate_dataset(image_path, mask_path, using_gt_mask=False)
+
+    gm = train_gm_partial_labeled(X, y, n_classes=2)
+
+    evaluate(gm, rgb_dirs, gt_dirs, save_predictions=True, save_path=save_path)
+
+
+def main():
+    pipeline_labeled_fg()
+
+
+
+if __name__ == "__main__":
+    main()
