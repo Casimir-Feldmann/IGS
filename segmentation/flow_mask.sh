@@ -1,6 +1,7 @@
 #!/bin/bash
 
-EXPERIMENT_NAME=stop_motion_1
+# EXPERIMENT_NAME=2023-10-27-13-20-44
+EXPERIMENT_NAME=bagfiles_casi/automated_sweep_2
 # FLOW_CHECKPOINT_PATH=/home/casimir/ETH/SemesterProject/mmflow/checkpoints/pwcnet_ft_4x1_300k_sintel_final_384x768.pth
 # FLOW_CONFIG_PATH=/home/casimir/ETH/SemesterProject/mmflow/configs/pwcnet/pwcnet_ft_4x1_300k_sintel_final_384x768.py
 
@@ -10,7 +11,7 @@ FLOW_CONFIG_PATH=/home/casimir/ETH/SemesterProject/IGS/flow/checkpoints_paths/pw
 RGB_PATH=/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/$EXPERIMENT_NAME/rgb
 SAVE_PATH=/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/$EXPERIMENT_NAME/estimated_masks
 EVAL_PATH=/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/$EXPERIMENT_NAME/gt_masks
-FLOW_THRESHOLD=2.0
+FLOW_THRESHOLD=8.0
 
 mkdir -p $SAVE_PATH
 
