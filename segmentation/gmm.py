@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from itertools import cycle
+import matplotlib.colors as colors
 
 import numpy as np
 import cv2
@@ -8,6 +10,7 @@ from tqdm import tqdm
 
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
+from sklearn.neighbors import LocalOutlierFactor
 
 import sys
 parent = os.path.dirname(os.getcwd())
@@ -15,36 +18,18 @@ import_dir = parent + "/evaluation"
 sys.path.append(import_dir)
 from evaluation_metrics import calc_IoU_Sets
 
-
-def generate_dataset(rgb_path, mask_path, using_gt_mask=False):
+def generate_dataset_fg(rgb_path, mask_path, using_gt_mask=False):
 
     img = cv2.imread(rgb_path)
     assert img is not None, "file could not be read, check with os.path.exists()"
-
     # img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
-
     input_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
     input_mask[input_mask > 0] = 1
     input_mask[input_mask == 0] = 0
 
-
-    # plt.imshow(img)
-    # plt.imshow(input_mask, alpha=0.6)
-    # plt.savefig("test.png")
-    # plt.close()
-
-
     fg = img[input_mask > 0]
-    rest = img[input_mask == 0]
 
-    X = np.concatenate((fg, rest), axis=0)
-
-    if using_gt_mask:
-        y = np.concatenate((np.ones(fg.shape[0]), np.zeros(rest.shape[0])), axis=0)
-    else:
-        y = np.concatenate((np.ones(fg.shape[0]), -np.ones(rest.shape[0])), axis=0)
-
-    return X, y
+    return fg, input_mask, img
 
 
 def load_data(rgb_path):
@@ -187,16 +172,18 @@ def pipeline_labeled_fg():
     evaluate(gm, rgb_dirs, gt_dirs, save_predictions=True, save_path=save_path)
 
 
-def data_plot(X, y, gmm, colors=["red", "green"]):
+def data_plot(X, gmm, n_comp):
     h = plt.subplot(1,1,1)
-    data = X[y == 0]
+    data = X
     plt.scatter(data[:, 0], data[:, 1], s=0.8, color="blue", label="foreground")
-    data = X[y == 1]
-    plt.scatter(data[:, 0], data[:, 1], s=0.8, color="blue", label="background")
+    # data = X[y == 1]
+    # plt.scatter(data[:, 0], data[:, 1], s=0.8, color="blue", label="background")
     plt.xlabel("R")
     plt.ylabel("G")
 
-    for n, color in enumerate(colors):
+    colors_ = cycle(colors.cnames.keys())
+
+    for n, color in zip(range(n_comp), colors_):
         if gmm.covariance_type == "full":
             covariances = gmm.covariances_[n][:2, :2]
         elif gmm.covariance_type == "tied":
@@ -241,30 +228,48 @@ def data_plot(X, y, gmm, colors=["red", "green"]):
 
 def pipeline_real():
     
-    rgb_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/2023-10-27-13-20-44/rgb"
-    mask_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/2023-10-27-13-20-44/estimated_masks"
-    save_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/2023-10-27-13-20-44/gm_mask_debug"
+    rgb_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/bagfiles_casi/automated_sweep_2/rgb"
+    mask_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/bagfiles_casi/automated_sweep_2/estimated_masks"
+    save_path = "/home/casimir/ETH/SemesterProject/IGS/dataset/dataset_processed/bagfiles_casi/automated_sweep_2/gm_mask_debug"
     
     os.makedirs(save_path, exist_ok=True)
 
     rgb_dirs = [os.path.join(rgb_path, file) for file in sorted(os.listdir(rgb_path))]
     mask_dirs = [os.path.join(mask_path, file) for file in sorted(os.listdir(mask_path))]
 
-    idx = 333
-    image_path = rgb_dirs[idx]
-    mask_path = mask_dirs[idx]
+    image_path = rgb_dirs[250]
+    mask_path = mask_dirs[0]
 
-    X, y = generate_dataset(image_path, mask_path, using_gt_mask=False)
+    n_components=2
 
-    gm = GaussianMixture(n_components=2, covariance_type="full", max_iter=20, random_state=0)
+    X_fg , mask, img = generate_dataset_fg(image_path, mask_path, using_gt_mask=False)
 
-    gm.fit(X)
+    clf = LocalOutlierFactor(n_neighbors=20)
+    clf.fit(X_fg)
+    outlier_pred = clf.predict(X_fg)
+    print(outlier_pred.shape[0])
+    print(outlier_pred[outlier_pred==1].shape[0])
 
-    y_pred = gm.predict(X)
 
-    data_plot(X, y_pred, gm)
 
-    inference_debug(gm, rgb_dirs, save_path)
+
+
+
+
+    # gm_fg = GaussianMixture(n_components=n_components, covariance_type="full", max_iter=20, random_state=0)
+
+    # gm_fg.fit(X_fg)
+
+    # data_plot(gmm=gm_fg, X=X_fg, n_comp=n_components)
+
+
+    # y_pred = gm_fg.predict(X)
+
+
+
+    # data_plot(X, y_pred, gm)
+
+    inference_debug(gm_fg, rgb_dirs, save_path)
 
 
 
